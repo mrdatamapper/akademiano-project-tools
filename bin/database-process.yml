@@ -1,0 +1,303 @@
+#!/usr/bin/env ansible-playbook
+---
+- hosts: localhost
+  vars:
+    phinx_config_file_name: "phinx.yml"
+
+    postgresql_host_default: 127.0.0.1
+    postgresql_user_default: postgres
+    postgresql_password_default: postgres
+
+    ansible_connection: local
+    current_dir: "{{ lookup('env','PWD') }}"
+    phinx_config_file: "{{current_dir}}/{{phinx_config_file_name}}"
+
+    postgresql_project_passwd: "{{ lookup('password', '{{current_dir}}/.db_passwd chars=ascii_letters,digits,hexdigits') }}"
+
+  tasks:
+    - name: "Info messages"
+      debug:
+        msg: "This playbook prepare database for this project"
+
+    - name: PrepareDB | Params | phinx.yml | Check that the phinx.yml exist
+      stat:
+        path: "{{phinx_config_file}}"
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: phinx_exist_result
+
+    - set_fact:
+        phinx_exist: "{{phinx_exist_result.stat.exists is defined and phinx_exist_result.stat.exists}}"
+
+    - name: PrepareDB | Params | phinx.yml | Include phinx vars if exist
+      include_vars:
+        file: "{{phinx_config_file}}"
+        name: phinx
+      when: phinx_exist
+
+    - name: PrepareDB | Params | phinx.yml | Check connection to server from phinx vars
+      block:
+        - name: PrepareDB | Params | phinx.yml | Get database_environment
+          set_fact:
+            database_environment: "{{phinx.environments.default_database}}"
+
+        - name: PrepareDB | Params | phinx.yml | Check adapter is postgresql
+          set_fact:
+            phinx_adapter_is_pgsql: "{{hostvars[inventory_hostname]['phinx']['environments'][database_environment]['adapter'] == 'pgsql'}}"
+
+        - name: PrepareDB | Params | phinx.yml |  Check connection
+          block:
+            - name: PrepareDB | Params | phinx.yml | Set params
+              set_fact:
+                postgresql_host: "{{hostvars[inventory_hostname]['phinx']['environments'][database_environment]['host'] | default(postgresql_host_default)}}"
+                postgresql_user: "{{hostvars[inventory_hostname]['phinx']['environments'][database_environment]['user'] | default(postgresql_user_default)}}"
+                postgresql_password: "{{hostvars[inventory_hostname]['phinx']['environments'][database_environment]['pass'] | default(postgresql_password_default)}}"
+              when: phinx_adapter_is_pgsql
+              ignore_errors: yes
+
+            - name: PrepareDB | Params | phinx.yml | Check connection
+              postgresql_ping:
+                login_host: "{{postgresql_host}}"
+                login_user: "{{postgresql_user}}"
+                login_password: "{{postgresql_password}}"
+              register: postgresql_ping
+
+            - name: PrepareDB | Params | phinx.yml | Set available
+              set_fact:
+                postgresql_available: "{{postgresql_ping.is_available}}"
+
+            - name: PrepareDB | Params | phinx.yml | Is superuser
+              postgresql_query:
+                login_host: "{{postgresql_host}}"
+                login_user: "{{postgresql_user}}"
+                login_password: "{{postgresql_password}}"
+                query: select case current_setting('is_superuser') when 'on' then 1 else 0 end as is_superuser;
+              register: is_superuser_result
+              when: postgresql_available
+
+            - set_fact:
+                is_superuser: "{{is_superuser_result is defined and is_superuser_result.rowcount is defined and is_superuser_result.rowcount>=1 and is_superuser_result.query_result[0].is_superuser==1}}"
+
+          when: phinx_adapter_is_pgsql
+
+        - name: PrepareDB | Params | phinx.yml | Result
+          set_fact:
+            result_phinx_params: "{{postgresql_available is defined and postgresql_available and is_superuser}}"
+
+      when: phinx_exist
+
+    - name: PrepareDB | Params | Default
+      block:
+        - name: PrepareDB | Params | Default | Check connection
+          postgresql_ping:
+            login_host: "{{postgresql_host_default}}"
+            login_user: "{{postgresql_user_default}}"
+            login_password: "{{postgresql_password_default}}"
+          register: postgresql_ping
+
+        - name: PrepareDB | Params | Default | Set available
+          set_fact:
+            postgresql_available: "{{postgresql_ping.is_available}}"
+            cached: false
+
+        - name: PrepareDB | Params | Default | Is superuser
+          postgresql_query:
+            login_host: "{{postgresql_host_default}}"
+            login_user: "{{postgresql_user_default}}"
+            login_password: "{{postgresql_password_default}}"
+            query: select case current_setting('is_superuser') when 'on' then 1 else 0 end as is_superuser;
+          register: is_superuser_result
+          when: postgresql_available
+
+        - set_fact:
+            is_superuser: "{{is_superuser_result is defined and is_superuser_result.rowcount is defined and is_superuser_result.rowcount>=1 and is_superuser_result.query_result[0].is_superuser==1}}"
+
+        - name: PrepareDB | Params | Default | Set params
+          set_fact:
+            postgresql_host: "{{postgresql_host_default}}"
+            postgresql_user: "{{postgresql_user_default}}"
+            postgresql_password: "{{postgresql_password_default}}"
+          when: postgresql_available and is_superuser
+
+        - name: PrepareDB | Params | Default | Result
+          set_fact:
+            result_default_params: "{{postgresql_available is defined and postgresql_available and is_superuser}}"
+      when: not result_phinx_params
+
+    - name: PrepareDB | Params | Input
+      block:
+        - name: PrepareDB | Params | Input | Set default params
+          set_fact:
+            postgresql_host: "{{postgresql_host_default}}"
+            postgresql_user: "{{postgresql_user_default}}"
+            postgresql_password: "{{postgresql_password_default}}"
+
+        - name: PrepareDB | Params | Input | Get host
+          pause:
+            prompt: "Enter db host [{{postgresql_host}}]"
+          register: postgresql_host_input
+
+        - name: PrepareDB | Params | Input | Get user
+          pause:
+            prompt: "Enter db user [{{postgresql_user}}]"
+          register: postgresql_user_input
+
+        - name: PrepareDB | Params | Input | Get password
+          pause:
+            prompt: "Enter db password [hash: {{postgresql_password| hash('sha1') | truncate(9)}}]"
+            echo: false
+          register: postgresql_password_input
+
+        - name: PrepareDB | Params | Input | Set host
+          set_fact:
+            postgresql_host: "{{postgresql_host_input.user_input}}"
+          when: postgresql_host_input.user_input != ""
+
+        - name: PrepareDB | Params | Input | Set user
+          set_fact:
+            postgresql_user: "{{postgresql_user_input.user_input}}"
+          when: postgresql_user_input.user_input != ""
+
+        - name: PrepareDB | Params | Input | Set password
+          set_fact:
+            postgresql_password: "{{postgresql_password_input.user_input}}"
+          when: postgresql_password_input.user_input != ""
+
+        - name: PrepareDB | Params | Input | Check connection
+          postgresql_ping:
+            login_host: "{{postgresql_host}}"
+            login_user: "{{postgresql_user}}"
+            login_password: "{{postgresql_password}}"
+          register: postgresql_ping
+
+        - name: PrepareDB | Params | Input | Set available
+          set_fact:
+            postgresql_available: "{{postgresql_ping.is_available}}"
+
+        - name: PrepareDB | Params | Input | Is superuser
+          postgresql_query:
+            login_host: "{{postgresql_host}}"
+            login_user: "{{postgresql_user}}"
+            login_password: "{{postgresql_password}}"
+            query: select case current_setting('is_superuser') when 'on' then 1 else 0 end as is_superuser;
+          register: is_superuser_result
+          when: postgresql_available
+
+        - set_fact:
+            is_superuser: "{{is_superuser_result is defined and is_superuser_result.rowcount is defined and is_superuser_result.rowcount>=1 and is_superuser_result.query_result[0].is_superuser==1}}"
+
+      when: not result_phinx_params and not result_default_params
+
+    - name: PrepareDB | Params | Catch Error | Connect
+      debug:
+        msg: "Error in connect to postgresql server {{postgresql_host}} with username {{postgresql_user}} and pasword (hash) {{postgresql_password | hash('sha1') | truncate(9)}}"
+      when: not postgresql_available
+
+    - name: PrepareDB | Params | Catch Error | No Superuser
+      debug:
+        msg: "Error: Selected user {{postgresql_user}} not superuser"
+      when: not is_superuser
+
+    - name: PrepareDB | Bootstrap
+      block:
+        - name: PrepareDB | Bootstrap | Get project name
+          set_fact:
+            project_name: "{{current_dir | basename | replace('.','_')}}"
+
+        - name: PrepareDB | Bootstrap | Create user
+          postgresql_user:
+            login_host: "{{postgresql_host}}"
+            login_user: "{{postgresql_user}}"
+            login_password: "{{postgresql_password}}"
+
+            name: "{{project_name}}"
+            password: "{{ postgresql_project_passwd }}"
+
+        - name: PrepareDB | Bootstrap | Grant Superuser
+          postgresql_user:
+            login_host: "{{postgresql_host}}"
+            login_user: "{{postgresql_user}}"
+            login_password: "{{postgresql_password}}"
+
+            name: "{{project_name}}"
+            role_attr_flags: SUPERUSER
+          changed_when: false
+
+        - name: PrepareDB | Bootstrap | Create database
+          postgresql_db:
+            login_host: "{{postgresql_host}}"
+            login_user: "{{postgresql_user}}"
+            login_password: "{{postgresql_password}}"
+
+            name: "{{project_name}}"
+            encoding: UTF-8
+            template: template0
+            owner: "{{project_name}}"
+
+        - name: PrepareDB | Bootstrap | Add user to database
+          postgresql_user:
+            login_host: "{{postgresql_host}}"
+            login_user: "{{postgresql_user}}"
+            login_password: "{{postgresql_password}}"
+
+            name: "{{project_name}}"
+            db: "{{project_name}}"
+            priv: "ALL"
+
+        - set_fact:
+            phinx_content: |
+              paths:
+                  migrations: '%%PHINX_CONFIG_DIR%%/db/migrations'
+                  seeds: '%%PHINX_CONFIG_DIR%%/db/seeds'
+
+              environments:
+                  default_migration_table: phinxlog
+                  default_database: {{database_environment | default ("development")}}
+                  {{database_environment | default ("development")}}:
+                      adapter: pgsql
+                      host: {{postgresql_host}}
+                      name: {{project_name}}
+                      user: {{project_name}}
+                      pass: {{postgresql_project_passwd}}
+                      charset: utf8
+
+        - name: PrepareDB | Bootstrap | Save config
+          copy:
+            content: "{{phinx_content}}"
+            dest: "{{phinx_config_file}}"
+      when: postgresql_available and is_superuser
+
+    - name: Phinx
+      block:
+        - name: Phinx | Check phinx status
+          command: "vendor/bin/phinx status"
+          args:
+            chdir: "{{current_dir}}"
+          register: phinx_status
+          failed_when: phinx_status.rc !=0 and phinx_status.rc!=3
+          changed_when: phinx_status.rc >0
+
+        - name: Phinx | Migrate
+          command: "vendor/bin/phinx migrate"
+          args:
+            chdir: "{{current_dir}}"
+          when: phinx_status.rc !=0
+          register: phinx_migrate_result
+          changed_when: phinx_status.rc >0 and phinx_migrate_result.rc==0
+
+        - debug:
+            msg: "{{phinx_migrate_result.stdout_lines}}"
+          when: phinx_migrate_result is defined and phinx_migrate_result.stdout_lines is defined
+
+        - name: PrepareDB | Revoke Superuser
+          postgresql_user:
+            login_host: "{{postgresql_host}}"
+            login_user: "{{postgresql_user}}"
+            login_password: "{{postgresql_password}}"
+
+            name: "{{project_name}}"
+            role_attr_flags: NOSUPERUSER
+          changed_when: false
+
+      when: postgresql_available and is_superuser

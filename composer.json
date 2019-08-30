@@ -1,0 +1,16 @@
+{
+  "name": "akademiano/project-tools",
+  "type": "project-tools",
+  "description": "project-tools",
+  "license": "Apache-2.0",
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "authors": [
+    {
+      "name": "Vasiliy Shvakin",
+      "email": "mrdatamapper@gmail.com"
+    }
+  ],
+   "bin": ["bin/database-process.yml"]
+
+}
