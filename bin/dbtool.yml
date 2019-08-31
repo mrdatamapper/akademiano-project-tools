@@ -361,7 +361,7 @@
           args:
             chdir: "{{current_dir}}"
           environment:
-            CONFIG_PATH: "{{current_dir}}/src/config/config.local.php"
+            CONFIG_PATH: "{{current_dir}}/src/config/local.config.php"
             CONFIG_DATA_JSON: "{{php_config_json | to_json }}"
           register: php_config_result
           changed_when: phinx_save_config.changed
