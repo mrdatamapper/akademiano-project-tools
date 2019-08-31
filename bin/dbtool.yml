@@ -17,9 +17,9 @@
   tasks:
     - name: "Info messages"
       debug:
-        msg: "This playbook prepare database for this project"
+        msg: "This playbook work with database for this project"
 
-    - name: PrepareDB | Params | phinx.yml | Check that the phinx.yml exist
+    - name: DBTool | Params | phinx.yml | Check that the phinx.yml exist
       stat:
         path: "{{phinx_config_file}}"
         get_checksum: false
@@ -30,25 +30,25 @@
     - set_fact:
         phinx_exist: "{{phinx_exist_result.stat.exists is defined and phinx_exist_result.stat.exists}}"
 
-    - name: PrepareDB | Params | phinx.yml | Include phinx vars if exist
+    - name: DBTool | Params | phinx.yml | Include phinx vars if exist
       include_vars:
         file: "{{phinx_config_file}}"
         name: phinx
       when: phinx_exist
 
-    - name: PrepareDB | Params | phinx.yml | Check connection to server from phinx vars
+    - name: DBTool | Params | phinx.yml | Check connection to server from phinx vars
       block:
-        - name: PrepareDB | Params | phinx.yml | Get database_environment
+        - name: DBTool | Params | phinx.yml | Get database_environment
           set_fact:
             database_environment: "{{phinx.environments.default_database}}"
 
-        - name: PrepareDB | Params | phinx.yml | Check adapter is postgresql
+        - name: DBTool | Params | phinx.yml | Check adapter is postgresql
           set_fact:
             phinx_adapter_is_pgsql: "{{hostvars[inventory_hostname]['phinx']['environments'][database_environment]['adapter'] == 'pgsql'}}"
 
-        - name: PrepareDB | Params | phinx.yml |  Check connection
+        - name: DBTool | Params | phinx.yml |  Check connection
           block:
-            - name: PrepareDB | Params | phinx.yml | Set params
+            - name: DBTool | Params | phinx.yml | Set params
               set_fact:
                 postgresql_host: "{{hostvars[inventory_hostname]['phinx']['environments'][database_environment]['host'] | default(postgresql_host_default)}}"
                 postgresql_user: "{{hostvars[inventory_hostname]['phinx']['environments'][database_environment]['user'] | default(postgresql_user_default)}}"
@@ -56,18 +56,18 @@
               when: phinx_adapter_is_pgsql
               ignore_errors: yes
 
-            - name: PrepareDB | Params | phinx.yml | Check connection
+            - name: DBTool | Params | phinx.yml | Check connection
               postgresql_ping:
                 login_host: "{{postgresql_host}}"
                 login_user: "{{postgresql_user}}"
                 login_password: "{{postgresql_password}}"
               register: postgresql_ping
 
-            - name: PrepareDB | Params | phinx.yml | Set available
+            - name: DBTool | Params | phinx.yml | Set available
               set_fact:
                 postgresql_available: "{{postgresql_ping.is_available}}"
 
-            - name: PrepareDB | Params | phinx.yml | Is superuser
+            - name: DBTool | Params | phinx.yml | Is superuser
               postgresql_query:
                 login_host: "{{postgresql_host}}"
                 login_user: "{{postgresql_user}}"
@@ -81,27 +81,27 @@
 
           when: phinx_adapter_is_pgsql
 
-        - name: PrepareDB | Params | phinx.yml | Result
+        - name: DBTool | Params | phinx.yml | Result
           set_fact:
             result_phinx_params: "{{postgresql_available is defined and postgresql_available and is_superuser}}"
 
       when: phinx_exist
 
-    - name: PrepareDB | Params | Default
+    - name: DBTool | Params | Default
       block:
-        - name: PrepareDB | Params | Default | Check connection
+        - name: DBTool | Params | Default | Check connection
           postgresql_ping:
             login_host: "{{postgresql_host_default}}"
             login_user: "{{postgresql_user_default}}"
             login_password: "{{postgresql_password_default}}"
           register: postgresql_ping
 
-        - name: PrepareDB | Params | Default | Set available
+        - name: DBTool | Params | Default | Set available
           set_fact:
             postgresql_available: "{{postgresql_ping.is_available}}"
             cached: false
 
-        - name: PrepareDB | Params | Default | Is superuser
+        - name: DBTool | Params | Default | Is superuser
           postgresql_query:
             login_host: "{{postgresql_host_default}}"
             login_user: "{{postgresql_user_default}}"
@@ -113,69 +113,69 @@
         - set_fact:
             is_superuser: "{{is_superuser_result is defined and is_superuser_result.rowcount is defined and is_superuser_result.rowcount>=1 and is_superuser_result.query_result[0].is_superuser==1}}"
 
-        - name: PrepareDB | Params | Default | Set params
+        - name: DBTool | Params | Default | Set params
           set_fact:
             postgresql_host: "{{postgresql_host_default}}"
             postgresql_user: "{{postgresql_user_default}}"
             postgresql_password: "{{postgresql_password_default}}"
           when: postgresql_available and is_superuser
 
-        - name: PrepareDB | Params | Default | Result
+        - name: DBTool | Params | Default | Result
           set_fact:
             result_default_params: "{{postgresql_available is defined and postgresql_available and is_superuser}}"
       when: not result_phinx_params
 
-    - name: PrepareDB | Params | Input
+    - name: DBTool | Params | Input
       block:
-        - name: PrepareDB | Params | Input | Set default params
+        - name: DBTool | Params | Input | Set default params
           set_fact:
             postgresql_host: "{{postgresql_host_default}}"
             postgresql_user: "{{postgresql_user_default}}"
             postgresql_password: "{{postgresql_password_default}}"
 
-        - name: PrepareDB | Params | Input | Get host
+        - name: DBTool | Params | Input | Get host
           pause:
             prompt: "Enter db host [{{postgresql_host}}]"
           register: postgresql_host_input
 
-        - name: PrepareDB | Params | Input | Get user
+        - name: DBTool | Params | Input | Get user
           pause:
             prompt: "Enter db user [{{postgresql_user}}]"
           register: postgresql_user_input
 
-        - name: PrepareDB | Params | Input | Get password
+        - name: DBTool | Params | Input | Get password
           pause:
             prompt: "Enter db password [hash: {{postgresql_password| hash('sha1') | truncate(9)}}]"
             echo: false
           register: postgresql_password_input
 
-        - name: PrepareDB | Params | Input | Set host
+        - name: DBTool | Params | Input | Set host
           set_fact:
             postgresql_host: "{{postgresql_host_input.user_input}}"
           when: postgresql_host_input.user_input != ""
 
-        - name: PrepareDB | Params | Input | Set user
+        - name: DBTool | Params | Input | Set user
           set_fact:
             postgresql_user: "{{postgresql_user_input.user_input}}"
           when: postgresql_user_input.user_input != ""
 
-        - name: PrepareDB | Params | Input | Set password
+        - name: DBTool | Params | Input | Set password
           set_fact:
             postgresql_password: "{{postgresql_password_input.user_input}}"
           when: postgresql_password_input.user_input != ""
 
-        - name: PrepareDB | Params | Input | Check connection
+        - name: DBTool | Params | Input | Check connection
           postgresql_ping:
             login_host: "{{postgresql_host}}"
             login_user: "{{postgresql_user}}"
             login_password: "{{postgresql_password}}"
           register: postgresql_ping
 
-        - name: PrepareDB | Params | Input | Set available
+        - name: DBTool | Params | Input | Set available
           set_fact:
             postgresql_available: "{{postgresql_ping.is_available}}"
 
-        - name: PrepareDB | Params | Input | Is superuser
+        - name: DBTool | Params | Input | Is superuser
           postgresql_query:
             login_host: "{{postgresql_host}}"
             login_user: "{{postgresql_user}}"
@@ -189,23 +189,23 @@
 
       when: not result_phinx_params and not result_default_params
 
-    - name: PrepareDB | Params | Catch Error | Connect
+    - name: DBTool | Params | Catch Error | Connect
       debug:
         msg: "Error in connect to postgresql server {{postgresql_host}} with username {{postgresql_user}} and pasword (hash) {{postgresql_password | hash('sha1') | truncate(9)}}"
       when: not postgresql_available
 
-    - name: PrepareDB | Params | Catch Error | No Superuser
+    - name: DBTool | Params | Catch Error | No Superuser
       debug:
         msg: "Error: Selected user {{postgresql_user}} not superuser"
       when: not is_superuser
 
-    - name: PrepareDB | Bootstrap
+    - name: DBTool | Bootstrap
       block:
-        - name: PrepareDB | Bootstrap | Get project name
+        - name: DBTool | Bootstrap | Get project name
           set_fact:
             project_name: "{{current_dir | basename | replace('.','_')}}"
 
-        - name: PrepareDB | Bootstrap | Create user
+        - name: DBTool | Bootstrap | Create user
           postgresql_user:
             login_host: "{{postgresql_host}}"
             login_user: "{{postgresql_user}}"
@@ -214,7 +214,7 @@
             name: "{{project_name}}"
             password: "{{ postgresql_project_passwd }}"
 
-        - name: PrepareDB | Bootstrap | Grant Superuser
+        - name: DBTool | Bootstrap | Grant Superuser
           postgresql_user:
             login_host: "{{postgresql_host}}"
             login_user: "{{postgresql_user}}"
@@ -224,7 +224,7 @@
             role_attr_flags: SUPERUSER
           changed_when: false
 
-        - name: PrepareDB | Bootstrap | Create database
+        - name: DBTool | Bootstrap | Create database
           postgresql_db:
             login_host: "{{postgresql_host}}"
             login_user: "{{postgresql_user}}"
@@ -235,7 +235,7 @@
             template: template0
             owner: "{{project_name}}"
 
-        - name: PrepareDB | Bootstrap | Add user to database
+        - name: DBTool | Bootstrap | Add user to database
           postgresql_user:
             login_host: "{{postgresql_host}}"
             login_user: "{{postgresql_user}}"
@@ -262,10 +262,11 @@
                       pass: {{postgresql_project_passwd}}
                       charset: utf8
 
-        - name: PrepareDB | Bootstrap | Save config
+        - name: DBTool | Bootstrap | Save config
           copy:
             content: "{{phinx_content}}"
             dest: "{{phinx_config_file}}"
+          register: phinx_save_config
       when: postgresql_available and is_superuser
 
     - name: Phinx
@@ -290,7 +291,7 @@
             msg: "{{phinx_migrate_result.stdout_lines}}"
           when: phinx_migrate_result is defined and phinx_migrate_result.stdout_lines is defined
 
-        - name: PrepareDB | Revoke Superuser
+        - name: DBTool | Revoke Superuser
           postgresql_user:
             login_host: "{{postgresql_host}}"
             login_user: "{{postgresql_user}}"
@@ -299,5 +300,72 @@
             name: "{{project_name}}"
             role_attr_flags: NOSUPERUSER
           changed_when: false
+      when: postgresql_available and is_superuser
+
+    - name: DBTool | Php config | Php code
+      block:
+        - set_fact:
+            php_code: |
+              /usr/bin/env php << 'EOF'
+
+              <?php
+                  $path = getenv("CONFIG_PATH");
+                  $data = getenv("CONFIG_DATA_JSON");
+                  $data = json_decode($data, true);
+                  $config = (file_exists($path) && is_array($config_data = (array) include($path))) ? $config_data : [];
+
+                  function mergeRecursive()
+                  {
+                      $arrays = func_get_args();
+                      $merged = array_shift($arrays);
+                      foreach ($arrays as $currentArray) {
+                          foreach ($currentArray as $key => $value) {
+                              if (is_array($value) && isset ($merged[$key]) && is_array($merged[$key])) {
+                                  $merged[$key] = mergeRecursive($merged[$key], $value);
+                              } else {
+                                  $merged[$key] = $value;
+                              }
+                          }
+                      }
+
+                      return $merged;
+                  }
+
+                  $config = mergeRecursive($config, $data);
+
+                  function varexport($expression, $return=FALSE) {
+                      $export = var_export($expression, TRUE);
+                      $export = preg_replace("/^([ ]*)(.*)/m", '$1$1$2', $export);
+                      $array = preg_split("/\r\n|\n|\r/", $export);
+                      $array = preg_replace(["/\s*array\s\($/", "/\)(,)?$/", "/\s=>\s$/"], [NULL, ']$1', ' => ['], $array);
+                      $export = join(PHP_EOL, array_filter(["["] + $array));
+                      if ((bool)$return) return $export; else echo $export;
+                  }
+
+                  file_put_contents($path, "<?php\nreturn ".varexport($config, true).";\n");
+              ?>
+              EOF
+
+        - name: DBTool | Php config | Data json
+          set_fact:
+            php_config_json:
+              database:
+                default:
+                  host: "{{postgresql_host}}"
+                  name: "{{project_name}}"
+                  user: "{{project_name}}"
+                  password: "{{postgresql_project_passwd}}"
+
+        - name: DBTool | Php config | Write
+          shell: "{{php_code}}"
+          args:
+            chdir: "{{current_dir}}"
+          environment:
+            CONFIG_PATH: "{{current_dir}}/src/config/config.local.php"
+            CONFIG_DATA_JSON: "{{php_config_json | to_json }}"
+          register: php_config_result
+          changed_when: phinx_save_config.changed
 
       when: postgresql_available and is_superuser
+
+

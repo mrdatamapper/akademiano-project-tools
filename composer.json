@@ -11,6 +11,6 @@
       "email": "mrdatamapper@gmail.com"
     }
   ],
-   "bin": ["bin/database-process.yml"]
+   "bin": ["bin/dbtool.yml"]
 
 }
